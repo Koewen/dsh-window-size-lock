@@ -1,0 +1,15 @@
+# dsh-window-size-lock bundle patch
+#
+# Mounts the host plugin into the DSH profile composition. The plugin reads
+# `config` below at mount time. Notes:
+#   - enabled: false disables everything (DSH keeps its default behavior).
+#   - pollMs: watch-loop interval; graceMs: how long after the window appears
+#     the saved size is re-asserted to beat DSH's default 1280x820 layout.
+- insert:
+    - id: window-size-lock
+      # Must match package.json "name".
+      name: 'dsh-window-size-lock'
+      config:
+        enabled: true
+        pollMs: 500
+        graceMs: 3000

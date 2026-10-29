@@ -1,0 +1,10 @@
+{
+  "name": "wsl-test-profile",
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "dsh-window-size-lock"
+      ]
+    }
+  }
+}
