@@ -11,7 +11,13 @@ across sessions.
    DSH's default `1280×820` layout never wins.
 2. **Adopt on resize** — after you drag the window edge/corner and the new size
    stays stable, it is saved as the new lock automatically.
-3. **Persist** — the size is stored in
+3. **Maximize-safe** — a maximized (double-click fullscreen) window is never
+   recorded. While the window is zoomed all size recording pauses; when you
+   restore it, the saved non-fullscreen size is re-applied. The same freeze
+   applies to minimized windows (which report the classic offscreen
+   `-32000,-32000` rect) and borderless fullscreen (F11-style, detected by a
+   monitor-cover heuristic since it is not `WS_MAXIMIZE`).
+4. **Persist** — the size is stored in
    `%APPDATA%\@deepseek-ai\dsh-desktop\window-size-lock.json` and survives
    restarts.
 
@@ -41,6 +47,7 @@ Edit the `config:` block in `cordis.patch.yml`, then reinstall/restart:
 | `enabled` | `true`  | Master switch. `false` = DSH default behavior, no lock.        |
 | `pollMs`  | `500`   | Watch-loop interval in milliseconds.                           |
 | `graceMs` | `3000`  | How long after the window appears the saved size is re-asserted. |
+| `adoptFactoryDefault` | `false` | Allow `1280×820` (DSH factory default) to be adopted as a lock. Keep `false` unless you really want that exact size. |
 
 ## Reset
 
@@ -70,6 +77,11 @@ by the parent PID, and applies/observes sizes with `MoveWindow` /
 Electron enforces a minimum window size (~`520×600`) at the Chromium message
 layer. No external caller can shrink the window below that floor — this plugin
 locks sizes within the allowed range only.
+
+DPI: the plugin requests per-monitor DPI awareness v2 at startup (best effort)
+so coordinates are physical pixels. If the host process already fixed its DPI
+context before this call, mixed-DPI multi-monitor setups may restore sizes
+with a scale offset.
 
 ## Compatibility
 

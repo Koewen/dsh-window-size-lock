@@ -13,3 +13,7 @@
         enabled: true
         pollMs: 500
         graceMs: 3000
+        # adoptFactoryDefault: false (default) never adopts DSH's factory
+        # default 1280x820 as the lock; set true if you actually want that
+        # exact size to be lockable.
+        adoptFactoryDefault: false
