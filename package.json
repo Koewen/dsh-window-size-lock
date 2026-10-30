@@ -1,6 +1,6 @@
 {
   "name": "dsh-window-size-lock",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Lock and persist the DeepSeek Harness main window size and position: restore the last rect (x, y, width, height) on every launch (beating the default layout) and adopt stable user moves/resizes as the new lock, via user32.dll (koffi) from the host plugin process.",
   "type": "module",
   "main": "lib/index.js",

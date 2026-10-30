@@ -80,12 +80,16 @@ const check = (name, cond, detail = '') => {
 };
 
 // ============ T1: baseline adoption of position + size ============
+// v1.4.2: the rect the window is BORN at is treated as DSH's own placement
+// and is never adopted; the first lock forms from a real user move/resize.
 try { rmSync(STORE); } catch { /* none */ }
 let win = makeWindow(100, 100, 500, 400, 'wsl-t1');
 let p = await startPlugin({ ownerPid: process.pid });
+await sleep(600);
+MoveWindow(win, 120, 140, 640, 480, true);
 await sleep(1400);
 let s = readStore();
-check('T1 首次采用 位置+尺寸', s?.x === 100 && s?.y === 100 && s?.width === 500 && s?.height === 400, JSON.stringify(s));
+check('T1 首次采用 位置+尺寸（拖动后）', s?.x === 120 && s?.y === 140 && s?.width === 640 && s?.height === 480, JSON.stringify(s));
 p.dispose(); DestroyWindow(win);
 
 // ============ T2: move only (the reported bug scenario) ============
@@ -165,12 +169,16 @@ check('T7 保存原点离屏 → 保留当前位置不外拽', !!r7 && r7.x === 
 p.dispose(); DestroyWindow(win);
 
 // ============ T8: legacy v1.3.0 store (size only) ============
+// v1.4.2: x/y are learned from the first USER move, never from the rect DSH
+// placed the window at (that would freeze DSH's default origin as the lock).
 writeStore({ width: 800, height: 600, updatedAt: '2026-10-29T00:00:00.000Z' });
 win = makeWindow(250, 180, 800, 600, 'wsl-t8');
 p = await startPlugin({ ownerPid: process.pid });
-await sleep(1500);
+await sleep(700);
+MoveWindow(win, 260, 190, 800, 600, true);   // user moves; size unchanged
+await sleep(1400);
 s = readStore();
-check('T8 旧版 size-only 文件 → 自动补齐 x/y', s?.x === 250 && s?.y === 180 && s?.width === 800 && s?.height === 600, JSON.stringify(s));
+check('T8 旧版 size-only 文件 → 用户拖动后补齐 x/y', s?.x === 260 && s?.y === 190 && s?.width === 800 && s?.height === 600, JSON.stringify(s));
 p.dispose(); DestroyWindow(win);
 
 // ============ T9: persistPosition:false ============
@@ -223,8 +231,13 @@ writeFileSync(STORE, '{ this is not json ');
 win = makeWindow(300, 300, 600, 400, 'wsl-t13');
 p = await startPlugin({ ownerPid: process.pid });
 await sleep(1400);
+// v1.4.2: the rect DSH placed the window at is NEVER adopted as the lock
+// (that poisoned the lock with the default size / fixed origin), so the
+// lock only re-forms once the window is actually moved — user intent.
+MoveWindow(win, 350, 320, 640, 440, true);
+await sleep(1400);
 s = readStore();
-check('T13 损坏的存储文件被忽略并重新采用', !!s && s.width === 600 && s.height === 400 && s.x === 300, JSON.stringify(s));
+check('T13 损坏的存储文件被忽略；拖动后重建锁', !!s && s.width === 640 && s.height === 440 && s.x === 350, JSON.stringify(s));
 p.dispose(); DestroyWindow(win);
 
 // ============ T14: dispose stops everything ============
@@ -266,16 +279,48 @@ p.dispose(); DestroyWindow(win);
 writeStore({ width: 800, height: 600, updatedAt: '2026-10-29T00:00:00.000Z' }); // size-only
 win = makeWindow(250, 180, 800, 600, 'wsl-t17');
 p = await startPlugin({ ownerPid: process.pid });
-await sleep(1600);
+await sleep(600);
+MoveWindow(win, 400, 300, 800, 600, true);   // user move teaches x/y
+await sleep(1400);
 s = readStore();
 const gotXY = Number.isInteger(s?.x) && Number.isInteger(s?.y);
-check('T17a 旧存档首启 → 学到并写入 x/y', gotXY, JSON.stringify(s));
+check('T17a 旧存档首启 → 用户拖动后学到并写入 x/y', gotXY && s?.x === 400 && s?.y === 300, JSON.stringify(s));
 DestroyWindow(win);
 await sleep(400);
 win = makeWindow(700, 500, 800, 600, 'wsl-t17-reopen');
 await sleep(900);
 const r17 = rectOf(win);
 check('T17b 旧存档二次启动 → 位置被恢复', gotXY && !!r17 && Math.abs(r17.x - s.x) <= 2 && Math.abs(r17.y - s.y) <= 2, JSON.stringify(r17));
+p.dispose(); DestroyWindow(win);
+
+// ============ T18: DSH re-asserts its default layout AFTER boot ============
+// (the v1.4.2 poison bug: rc.5 yanks the window back to its default rect
+// long after boot; the old code ADOPTED it and the lock was destroyed)
+writeStore({ x: 400, y: 300, width: 900, height: 700, updatedAt: new Date().toISOString() });
+win = makeWindow(60, 60, 1280, 829, 'wsl-t18');     // DSH default placement
+p = await startPlugin({ ownerPid: process.pid });
+await sleep(800);
+let r18 = rectOf(win);
+check('T18a 启动即恢复锁', !!r18 && Math.abs(r18.x - 400) <= 2 && Math.abs(r18.y - 300) <= 2 && Math.abs(r18.w - 900) <= 2, JSON.stringify(r18));
+MoveWindow(win, 60, 60, 1280, 829, true);            // rc.5's late default-layout reset
+await sleep(2000);
+r18 = rectOf(win);
+s = readStore();
+check('T18b 迟到重置被夺回且锁不被污染', !!r18 && Math.abs(r18.x - 400) <= 2 && Math.abs(r18.y - 300) <= 2 && s?.width === 900 && s?.height === 700 && s?.x === 400, `rect=${JSON.stringify(r18)} store=${JSON.stringify(s)}`);
+p.dispose(); DestroyWindow(win);
+
+// ============ T19: finishing a drag during grace cancels the grace ============
+// (the v1.4.2 "drag snaps back" bug: the old code re-applied the old lock
+// the moment the user's drag ended inside the grace window)
+writeStore({ x: 200, y: 200, width: 800, height: 600, updatedAt: new Date().toISOString() });
+win = makeWindow(50, 50, 600, 400, 'wsl-t19');       // DSH default placement
+p = await startPlugin({ ownerPid: process.pid, graceMs: 4000 });
+await sleep(500);                                     // plugin applies the lock
+MoveWindow(win, 500, 450, 900, 700, true);            // user drags during grace
+await sleep(1600);
+s = readStore();
+const r19 = rectOf(win);
+check('T19 宽限期内拖拽获胜 → 取消宽限期并采纳', s?.width === 900 && s?.height === 700 && s?.x === 500 && s?.y === 450 && !!r19 && Math.abs(r19.x - 500) <= 2, `store=${JSON.stringify(s)} rect=${JSON.stringify(r19)}`);
 p.dispose(); DestroyWindow(win);
 
 // ============ summary ============
