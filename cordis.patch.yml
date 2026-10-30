@@ -12,7 +12,10 @@
       config:
         enabled: true
         pollMs: 500
-        graceMs: 3000
+        # 12s: DSH >= rc.5 re-asserts its default layout noticeably later in
+        # the boot sequence than rc.3 did; a 3s grace lost that race and the
+        # window ended up back at the factory default after startup.
+        graceMs: 12000
         # adoptFactoryDefault: false (default) never adopts DSH's factory
         # default 1280x820 as the lock; set true if you actually want that
         # exact size to be lockable.
